@@ -1,0 +1,11 @@
+{
+  "user": "USERNAME",
+  "password": "PASSWORD",
+  "domain": "Global",
+  "server_address": "localhost",
+  "cloudshell_api_port": "9000",
+  "reservation_id": "RESERVATION ID",
+  "command_parameters": {
+    "KEY": "VALUE"
+  }
+}
