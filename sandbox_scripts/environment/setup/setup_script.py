@@ -15,7 +15,9 @@ class EnvironmentSetup(object):
     DRIVER_FUNCTION_ERROR = "151"
 
     def __init__(self):
+        self.reservation_description = None
         self.reservation_id = helpers.get_reservation_context_details().id
+        self.resource = None
         self.logger = qs_logger.get_qs_logger(log_file_prefix="CloudShell Sandbox Setup",
                                               log_group=self.reservation_id,
                                               log_category='Setup')
@@ -37,7 +39,7 @@ class EnvironmentSetup(object):
         if deploy_result and deploy_result.ResultItems:
             reservation_details = api.GetReservationDetails(self.reservation_id)
 
-        self._try_exeucte_autoload(api=api,
+        self._try_execute_autoload(api=api,
                                    reservation_details=reservation_details,
                                    deploy_result=deploy_result,
                                    resource_details_cache=resource_details_cache)
@@ -50,11 +52,55 @@ class EnvironmentSetup(object):
                                                     deploy_results=deploy_result,
                                                     resource_details_cache=resource_details_cache)
 
+        api.WriteMessageToReservationOutput(reservationId=self.reservation_id,
+                                            message='Configuring IxVM Chassis via Sandbox Details')
+        self._configure_chassis_via_sandbox(api)
+
         self.logger.info("Setup for reservation {0} completed".format(self.reservation_id))
         api.WriteMessageToReservationOutput(reservationId=self.reservation_id,
                                             message='Reservation setup finished successfully')
 
-    def _try_exeucte_autoload(self, api, reservation_details, deploy_result, resource_details_cache):
+    def _refresh_reservation_details(self, api):
+        self.reservation_description = api.GetReservationDetails(self.reservation_id).ReservationDescription
+        self.resource = self._covert_reservation_resources()
+
+        return
+
+    def _covert_reservation_resources(self):
+        dictionary = {}
+        for resource in self.reservation_description.Resources:
+            if resource.ResourceFamilyName not in dictionary:
+                dictionary[resource.ResourceFamilyName] = {}
+
+            if resource.ResourceModelName not in dictionary[resource.ResourceFamilyName]:
+                dictionary[resource.ResourceFamilyName][resource.ResourceModelName] = {}
+
+            dictionary[resource.ResourceFamilyName][resource.ResourceModelName][resource.Name] = resource
+
+        return dictionary
+
+    def _configure_chassis_via_sandbox(self, api):
+        self._refresh_reservation_details(api)
+
+        chassis = self.resource['Ixia Virtual Application']['Ixia IxVM Chassis']
+        if len(chassis) != 1:
+            self.cs_session.WriteMessageToReservationOutput(self.reservation_id,
+                                                            "%s chassis found, current implementation only supports one" %
+                                                            len(chassis))
+            return
+
+        chassis_name, chassis_resource = chassis.popitem()
+
+        api.ExecuteCommand(reservationId=self.reservation_id,
+                           targetName=chassis_name,
+                           targetType='Resource',
+                           commandName='configure_via_sandbox',
+                           commandInputs=[],
+                           printOutput=False)
+
+        return
+
+    def _try_execute_autoload(self, api, reservation_details, deploy_result, resource_details_cache):
         """
         :param GetReservationDescriptionResponseInfo reservation_details:
         :param CloudShellAPISession api:
